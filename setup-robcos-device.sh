@@ -26,10 +26,9 @@ echo "Installed ros2-exporter-agent snap"
 snap install foxglove-bridge --beta
 echo "Installed foxglove-bridge snap"
 
-# Home made Snap Store
-pip3 install gdown
-gdown https://drive.google.com/uc\?id\=1VOw1JGLLv38mz3DP8UpUtAJ53QWLsxe5
-snap install rob-cos-grafana-agent_*_amd64.snap --devmode
+# Installed in devmode since a snapd interface is missing to list systemd units over DBus
+snap install rob-cos-grafana-agent --devmode --beta
+# Necessary because we install in devmode
 snap connect rob-cos-grafana-agent:configuration-read rob-cos-demo-configuration:configuration-read
 echo "Installed grafana-agent snap"
 
