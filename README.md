@@ -4,7 +4,7 @@ Helper bash script to set up a rob-cos device's snaps.
 
 Download the script on the device with:
 
-`curl -L https://raw.githubusercontent.com/ubuntu-robotics/install-snaps-on-device.sh -O`
+`curl -L https://raw.githubusercontent.com/canonical/rob-cos-device-setup/main/setup-robcos-device.sh -O`
 
 And run it with:
 
