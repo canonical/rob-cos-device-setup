@@ -2,7 +2,7 @@
 
 echo "Setting up cos for robotics snaps.."
 
-snap install rob-cos-demo-configuration --channel=latest/edge
+snap install rob-cos-demo-configuration --channel=latest/beta
 echo "Installed configuration snap"
 
 echo "Please enter the device-uid:"
@@ -13,23 +13,28 @@ echo "Please enter the rob-cos-base-url (i.e: http://192.168.0.1/cos-robotics-mo
 read url
 snap set rob-cos-demo-configuration rob-cos-base-url=$url
 
-snap install rob-cos-data-sharing --channel=latest/edge
+snap install rob-cos-data-sharing --channel=latest/beta
 echo "Installed rob-cos-data sharing snap"
 
 # Installing this snap will automatically try to register the device
-snap install cos-registration-agent --channel=latest/edge
+snap install cos-registration-agent --channel=latest/beta
 echo "Installed cos-registration agent snap"
 
-snap install ros2-exporter-agent --channel=latest/edge
+snap install ros2-exporter-agent --channel=latest/beta
 echo "Installed ros2-exporter-agent snap"
 
 snap install foxglove-bridge --channel=humble/beta
 echo "Installed foxglove-bridge snap"
 
-# Installed in devmode since a snapd interface is missing to list systemd units over DBus
-snap install rob-cos-grafana-agent --devmode --channel=latest/beta
-# Necessary because we install in devmode
-snap connect rob-cos-grafana-agent:configuration-read rob-cos-demo-configuration:configuration-read
+snap install rob-cos-grafana-agent --channel=latest/beta
+# Connecting all the interfaces to read logs which are not autoconnect
+snap connect rob-cos-grafana-agent:hardware-observe
+snap connect rob-cos-grafana-agent:log-observe
+snap connect rob-cos-grafana-agent:mount-observe
+snap connect rob-cos-grafana-agent:network-observe
+snap connect rob-cos-grafana-agent:proc-sys-kernel-random
+snap connect rob-cos-grafana-agent:system-observe
+snap connect rob-cos-grafana-agent:time-control
 echo "Installed grafana-agent snap"
 
-echo "rob-cos device setup"
+echo "Device setup with cos for robotics"
