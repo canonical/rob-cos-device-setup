@@ -2,14 +2,14 @@
 
 echo "Setting up cos for robotics snaps.."
 
-snap install rob-cos-demo-configuration --channel=latest/beta
+snap install rob-cos-demo-configuration --channel=advanced/beta
 echo "Installed configuration snap"
 
 echo "Please enter the device-uid:"
 read uid
 snap set rob-cos-demo-configuration device-uid=$uid
 
-echo "Please enter the rob-cos-base-url (i.e: http://192.168.0.1/cos-robotics-model):"
+echo "Please enter the rob-cos-base-url (i.e: https://192.168.0.1/cos-robotics-model):"
 read url
 snap set rob-cos-demo-configuration rob-cos-base-url=$url
 
