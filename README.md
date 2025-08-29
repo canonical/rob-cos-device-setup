@@ -4,7 +4,7 @@ Helper bash script to set up a rob-cos device's snaps.
 
 Download the script on the device with:
 
-`curl -L https://raw.githubusercontent.com/canonical/rob-cos-device-setup/main/setup-robcos-device.sh -O`
+`curl -L https://raw.githubusercontent.com/canonical/rob-cos-device-setup/advanced-setup/setup-robcos-device.sh -O`
 
 And run it with:
 
@@ -19,7 +19,7 @@ Please enter the device-uid:
 my-new-robot
 
 Please enter the rob-cos-server-url:
-http://<rob-cos-server-ip>/rob-cos-model
+https://<rob-cos-server-ip>/rob-cos-model
 ```
 
 The script will proceed installing all the necessary snaps and registering the device on the provided rob-cos-server.
