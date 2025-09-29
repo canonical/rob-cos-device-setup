@@ -2,7 +2,7 @@
 
 echo "Setting up cos for robotics snaps.."
 
-snap install rob-cos-demo-configuration --channel=latest/beta
+snap install rob-cos-demo-configuration --channel=basic/beta
 echo "Installed configuration snap"
 
 echo "Please enter the device-uid:"
@@ -26,7 +26,7 @@ echo "Installed ros2-exporter-agent snap"
 snap install foxglove-bridge --channel=humble/beta
 echo "Installed foxglove-bridge snap"
 
-snap install rob-cos-grafana-agent --channel=latest/beta
+snap install rob-cos-grafana-agent --channel=core24/edge
 # Connecting all the interfaces to read logs which are not autoconnect
 snap connect rob-cos-grafana-agent:hardware-observe
 snap connect rob-cos-grafana-agent:log-observe
