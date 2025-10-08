@@ -23,7 +23,7 @@ echo "Installed cos-registration agent snap"
 snap install ros2-exporter-agent --channel=latest/beta
 echo "Installed ros2-exporter-agent snap"
 
-snap install foxglove-bridge --channel=humble/beta
+snap install foxglove-bridge --channel=jazzy/beta
 echo "Installed foxglove-bridge snap"
 
 snap install rob-cos-grafana-agent --channel=core24/edge
