@@ -35,6 +35,7 @@ snap connect rob-cos-grafana-agent:network-observe
 snap connect rob-cos-grafana-agent:proc-sys-kernel-random
 snap connect rob-cos-grafana-agent:system-observe
 snap connect rob-cos-grafana-agent:time-control
+snap restart rob-cos-grafana-agent
 echo "Installed grafana-agent snap"
 
 echo "Device setup with cos for robotics"
