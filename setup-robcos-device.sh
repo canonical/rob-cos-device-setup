@@ -23,7 +23,7 @@ echo "Installed cos-registration agent snap"
 snap install ros2-exporter-agent --channel=latest/beta
 echo "Installed ros2-exporter-agent snap"
 
-snap install foxglove-bridge --channel=humble/beta
+snap install foxglove-bridge --channel=jazzy/beta
 echo "Installed foxglove-bridge snap"
 
 snap install rob-cos-grafana-agent --channel=core24/edge
@@ -35,6 +35,7 @@ snap connect rob-cos-grafana-agent:network-observe
 snap connect rob-cos-grafana-agent:proc-sys-kernel-random
 snap connect rob-cos-grafana-agent:system-observe
 snap connect rob-cos-grafana-agent:time-control
+snap restart rob-cos-grafana-agent
 echo "Installed grafana-agent snap"
 
 echo "Device setup with cos for robotics"
