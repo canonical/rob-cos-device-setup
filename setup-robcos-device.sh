@@ -17,13 +17,14 @@ snap install rob-cos-data-sharing --channel=latest/beta
 echo "Installed rob-cos-data sharing snap"
 
 # Installing this snap will automatically try to register the device
-snap install cos-registration-agent --channel=latest/beta
+snap install cos-registration-agent --channel=latest/edge
 echo "Installed cos-registration agent snap"
 
 snap install ros2-exporter-agent --channel=latest/beta
 echo "Installed ros2-exporter-agent snap"
 
-snap install foxglove-bridge --channel=humble/beta
+snap install foxglove-bridge --channel=cos-humble/candidate
+sudo snap connect foxglove-bridge:rob-cos-common-read rob-cos-data-sharing:rob-cos-common-read
 echo "Installed foxglove-bridge snap"
 
 snap install rob-cos-grafana-agent --channel=latest/beta
