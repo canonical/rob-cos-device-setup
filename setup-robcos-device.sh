@@ -2,7 +2,7 @@
 
 echo "Setting up cos for robotics snaps.."
 
-snap install rob-cos-demo-configuration --channel=0/stable
+snap install rob-cos-demo-configuration --channel=basic/beta
 echo "Installed configuration snap"
 
 echo "Please enter the device-uid:"
@@ -13,20 +13,20 @@ echo "Please enter the rob-cos-base-url (i.e: http://192.168.0.1/cos-robotics-mo
 read url
 snap set rob-cos-demo-configuration rob-cos-base-url=$url
 
-snap install rob-cos-data-sharing --channel=latest/stable
+snap install rob-cos-data-sharing --channel=latest/beta
 echo "Installed rob-cos-data sharing snap"
 
 # Installing this snap will automatically try to register the device
-snap install cos-registration-agent --channel=0/stable
+snap install cos-registration-agent --channel=latest/beta
 echo "Installed cos-registration agent snap"
 
-snap install ros2-exporter-agent --channel=0/stable
+snap install ros2-exporter-agent --channel=latest/beta
 echo "Installed ros2-exporter-agent snap"
 
-snap install foxglove-bridge --channel=jazzy/stable
+snap install foxglove-bridge --channel=jazzy/beta
 echo "Installed foxglove-bridge snap"
 
-snap install rob-cos-grafana-agent --channel=core24/stable
+snap install rob-cos-grafana-agent --channel=core24/edge
 # Connecting all the interfaces to read logs which are not autoconnect
 snap connect rob-cos-grafana-agent:hardware-observe
 snap connect rob-cos-grafana-agent:log-observe
