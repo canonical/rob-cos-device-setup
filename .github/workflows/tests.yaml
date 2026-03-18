@@ -46,6 +46,7 @@ jobs:
             fi
 
             echo "Waiting for health endpoint (${elapsed}s/${timeout_seconds}s), got ${status_code}"
+            juju status --relations
             sleep 10
           done
 
