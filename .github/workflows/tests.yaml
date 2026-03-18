@@ -22,7 +22,7 @@ jobs:
           cd rob-cos-overlay/terraform/rob-cos
           terraform init
           terraform apply -auto-approve -var="model=testing"
-          cd ../../../
+          cd "$GITHUB_WORKSPACE"
           rob_cos_base_url="http://10.64.140.43/testing"
           registration_api_path="cos-registration-server/api/v1"
           api_base_url="${rob_cos_base_url}-${registration_api_path}"
