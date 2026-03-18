@@ -21,8 +21,8 @@ jobs:
           git clone https://github.com/ubuntu-robotics/rob-cos-overlay.git
           cd rob-cos-overlay/terraform/rob-cos
           terraform init
-          terraform apply -auto-approve
           terraform apply -auto-approve -var="model=testing"
+          cd ../../../
           rob_cos_base_url="http://10.64.140.43/testing"
           registration_api_path="cos-registration-server/api/v1"
           api_base_url="${rob_cos_base_url}-${registration_api_path}"
