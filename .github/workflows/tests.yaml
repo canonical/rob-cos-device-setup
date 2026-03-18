@@ -22,6 +22,10 @@ jobs:
           cd rob-cos-overlay/terraform/rob-cos
           terraform init
           terraform apply -auto-approve -var="model=testing"
+          # Due to https://github.com/canonical/cos-registration-server-k8s-operator/issues/59
+          sleep 60
+          juju remove-relation cos-registration-server:database postgresql:database
+          juju intgrate cos-registration-server:database postgresql:database
           cd "$GITHUB_WORKSPACE"
           rob_cos_base_url="http://10.64.140.43/testing"
           registration_api_path="cos-registration-server/api/v1"
