@@ -32,7 +32,7 @@ jobs:
 
           echo "Waiting for registration server health endpoint"
           while true; do
-            status_code="$(curl -s -o /dev/null -w "%{http_code}" "${api_base_url}/health" || true)"
+            status_code="$(curl -s -o /dev/null -w "%{http_code}" "${api_base_url}/health/" || true)"
             if [ "$status_code" = "200" ]; then
               echo "Health endpoint is ready."
               break
