@@ -11,33 +11,33 @@ jobs:
   setup-and-run:
     runs-on: self-hosted-linux-amd64-noble-xlarge
     steps:
-    - uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-    - name: Install dependencies
-      run: |
-        sudo apt update
-        sudo apt install -y tox
-        sudo snap install terraform --classic
-        sudo snap install concierge --classic
-        sudo snap install lxd
-        sudo snap install ros2-snapd --channel humble/stable
-        sudo concierge prepare --preset microk8s
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y tox
+          sudo snap install terraform --classic
+          sudo snap install concierge --classic
+          sudo snap install lxd
+          sudo snap install ros2-snapd --channel humble/stable
+          sudo concierge prepare --preset microk8s
 
-    - name: Prepare juju tf provider environment
-      run: |
-        CONTROLLER=$(juju whoami | yq .Controller)
-        JUJU_CONTROLLER_ADDRESSES="$(juju show-controller | yq '.[$CONTROLLER]'.details.\"api-endpoints\" | tr -d "[]' "|tr -d '"'|tr -d '\n')"
-        JUJU_USERNAME="$(cat ~/.local/share/juju/accounts.yaml | yq .controllers.$CONTROLLER.user|tr -d '"')"
-        JUJU_PASSWORD="$(cat ~/.local/share/juju/accounts.yaml | yq .controllers.$CONTROLLER.password|tr -d '"')"
+      - name: Prepare juju tf provider environment
+        run: |
+          CONTROLLER=$(juju whoami | yq .Controller)
+          JUJU_CONTROLLER_ADDRESSES="$(juju show-controller | yq '.[$CONTROLLER]'.details.\"api-endpoints\" | tr -d "[]' "|tr -d '"'|tr -d '\n')"
+          JUJU_USERNAME="$(cat ~/.local/share/juju/accounts.yaml | yq .controllers.$CONTROLLER.user|tr -d '"')"
+          JUJU_PASSWORD="$(cat ~/.local/share/juju/accounts.yaml | yq .controllers.$CONTROLLER.password|tr -d '"')"
 
-        echo "JUJU_CONTROLLER_ADDRESSES=$JUJU_CONTROLLER_ADDRESSES" >> "$GITHUB_ENV"
-        echo "JUJU_USERNAME=$JUJU_USERNAME" >> "$GITHUB_ENV"
-        echo "JUJU_PASSWORD=$JUJU_PASSWORD" >> "$GITHUB_ENV"
-        {
-          echo 'JUJU_CA_CERT<<EOF'
-          juju show-controller $(echo $CONTROLLER|tr -d '"') | yq '.[$CONTROLLER]'.details.\"ca-cert\"|tr -d '"'
-          echo EOF
-        } >> "$GITHUB_ENV"
+          echo "JUJU_CONTROLLER_ADDRESSES=$JUJU_CONTROLLER_ADDRESSES" >> "$GITHUB_ENV"
+          echo "JUJU_USERNAME=$JUJU_USERNAME" >> "$GITHUB_ENV"
+          echo "JUJU_PASSWORD=$JUJU_PASSWORD" >> "$GITHUB_ENV"
+          {
+            echo 'JUJU_CA_CERT<<EOF'
+            juju show-controller $(echo $CONTROLLER|tr -d '"') | yq '.[$CONTROLLER]'.details.\"ca-cert\"|tr -d '"'
+            echo EOF
+          } >> "$GITHUB_ENV"
 
-    - name: Run command
-      run: ${{ inputs.command }}
+      - name: Run command
+        run: ${{ inputs.command }}
