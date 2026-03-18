@@ -17,6 +17,7 @@ jobs:
         run: |
           sudo apt update
           sudo apt install -y tox
+          sudo apt install -y yq
           sudo snap install terraform --classic
           sudo snap install concierge --classic
           sudo snap install lxd
