@@ -1,0 +1,113 @@
+name: Tests
+
+on:
+  workflow_call:
+  pull_request:
+    branches:
+      - main
+  schedule:
+    # A twice-monthly schedule (1st and 15th at 03:00 UTC)
+    - cron: "0 3 1,15 * *"
+
+jobs:
+  tests:
+    uses: ./.github/workflows/juju-setup.yaml
+    with:
+      command: |
+          set -euo pipefail
+          echo "Starting COS device setup workflow"
+
+          echo "Cloning rob-cos-overlay and applying terraform"
+          git clone https://github.com/ubuntu-robotics/rob-cos-overlay.git
+          cd rob-cos-overlay/terraform/rob-cos
+          terraform init
+          terraform apply -auto-approve
+          terraform apply -auto-approve -var="model=testing"
+          rob_cos_base_url="http://10.64.140.43/testing"
+          registration_api_path="cos-registration-server/api/v1"
+          api_base_url="${rob_cos_base_url}-${registration_api_path}"
+
+          timeout_seconds=$((10*60))
+          start_time="$(date +%s)"
+
+          echo "Waiting for registration server health endpoint"
+          while true; do
+            status_code="$(curl -s -o /dev/null -w "%{http_code}" "${api_base_url}/health" || true)"
+            if [ "$status_code" = "200" ]; then
+              echo "Health endpoint is ready."
+              break
+            fi
+
+            now="$(date +%s)"
+            elapsed="$((now - start_time))"
+            if [ "$elapsed" -ge "$timeout_seconds" ]; then
+              echo "Health endpoint did not return 200 within ${timeout_seconds}s (last status: ${status_code})."
+              exit 1
+            fi
+
+            echo "Waiting for health endpoint (${elapsed}s/${timeout_seconds}s), got ${status_code}"
+            sleep 10
+          done
+
+          echo "Running device setup script as root"
+          device_uid="robot-001"
+          printf '%s\n%s\n' "${device_uid}" "${rob_cos_base_url}" | sudo bash ./setup-robcos-device.sh
+
+          echo "Validating device registration"
+          devices_response="$(curl -fsS "${api_base_url}/devices/")"
+          jq -e 'type == "array" and length == 1 and .[0].uid == "robot-001"' <<<"$devices_response" >/dev/null
+
+          echo "Verifying expected snaps are installed"
+          expected_snaps=(
+            rob-cos-demo-configuration
+            rob-cos-data-sharing
+            cos-registration-agent
+            ros2-exporter-agent
+            foxglove-bridge
+            rob-cos-grafana-agent
+          )
+
+          for snap_name in "${expected_snaps[@]}"; do
+            snap list "$snap_name" >/dev/null
+          done
+
+          echo "Verifying expected snap service states"
+          is_service_enabled() {
+            unit_name="$1"
+            expected_enabled="$2"
+            actual_enabled="$(systemctl is-enabled "$unit_name" || true)"
+            if [ "$actual_enabled" != "$expected_enabled" ]; then
+              echo "Unexpected enabled state for ${unit_name}: expected ${expected_enabled}, got ${actual_enabled}"
+              exit 1
+            fi
+          }
+
+          is_service_active() {
+            unit_name="$1"
+            expected_active="$2"
+            actual_active="$(systemctl is-active "$unit_name" || true)"
+            if [ "$actual_active" != "$expected_active" ]; then
+              echo "Unexpected active state for ${unit_name}: expected ${expected_active}, got ${actual_active}"
+              exit 1
+            fi
+          }
+
+          expected_units=(
+            "snap.cos-registration-agent.update-device-configuration.service|enabled|inactive"
+            "snap.ros2-exporter-agent.auto-clean.service|enabled|inactive"
+            "snap.ros2-exporter-agent.daily-rotation.service|enabled|inactive"
+            "snap.ros2-exporter-agent.read-configuration.service|enabled|inactive"
+            "snap.ros2-exporter-agent.recorder.service|enabled|active"
+            "snap.ros2-exporter-agent.synchronization.service|enabled|active"
+            "snap.foxglove-bridge.config-from-content-snap.service|enabled|inactive"
+            "snap.foxglove-bridge.foxglove-bridge.service|enabled|active"
+            "snap.rob-cos-grafana-agent.grafana-agent.service|enabled|active"
+          )
+
+          for unit_spec in "${expected_units[@]}"; do
+            IFS='|' read -r unit_name expected_enabled expected_active <<<"$unit_spec"
+            is_service_enabled "$unit_name" "$expected_enabled"
+            is_service_active "$unit_name" "$expected_active"
+          done
+
+          echo "All checks passed"
