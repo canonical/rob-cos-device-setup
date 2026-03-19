@@ -20,7 +20,7 @@ echo "Installed rob-cos-data sharing snap"
 snap install cos-registration-agent --channel=latest/beta
 echo "Installed cos-registration agent snap"
 
-snap install ros2-exporter-agent --channel=latest/beta
+snap install ros2-exporter-agent --channel=latest/edge
 echo "Installed ros2-exporter-agent snap"
 
 snap install foxglove-bridge --channel=jazzy/beta
