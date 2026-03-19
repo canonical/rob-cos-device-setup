@@ -25,8 +25,15 @@ jobs:
           # Due to https://github.com/canonical/cos-registration-server-k8s-operator/issues/59
           sleep 60
           juju remove-relation cos-registration-server:database postgresql:database
-          sleep 60
-          juju integrate cos-registration-server:database postgresql:database
+          while true; do
+            if juju integrate cos-registration-server:database postgresql:database; then
+              echo "Relation integration succeeded"
+              break
+            fi
+
+            echo "Relation integration failed; retrying in ${integrate_retry_interval_seconds}s (${elapsed}s/${integrate_timeout_seconds}s)"
+            sleep 60
+          done
           cd "$GITHUB_WORKSPACE"
           rob_cos_base_url="http://10.64.140.43/testing"
           registration_api_path="cos-registration-server/api/v1"
