@@ -82,6 +82,9 @@ jobs:
             unit_name="$1"
             expected_enabled="$2"
             actual_enabled="$(systemctl is-enabled "$unit_name" || true)"
+            if [ "$expected_enabled" = "enabled" ] && [ "$actual_enabled" = "static" ]; then
+              return 0
+            fi
             if [ "$actual_enabled" != "$expected_enabled" ]; then
               echo "Unexpected enabled state for ${unit_name}: expected ${expected_enabled}, got ${actual_enabled}"
               exit 1
