@@ -82,6 +82,7 @@ jobs:
 
           for snap_name in "${expected_snaps[@]}"; do
             snap list "$snap_name" >/dev/null
+            echo "Verifying ${snap_name} is installed"
           done
 
           echo "Verifying expected snap service states"
