@@ -34,7 +34,7 @@ jobs:
             echo "Relation integration failed; retrying in 60s"
             sleep 60
           done
-          cd "$GITHUB_WORKSPACE"
+          cd "${GITHUB_WORKSPACE}"
           rob_cos_base_url="http://10.64.140.43/testing"
           registration_api_path="cos-registration-server/api/v1"
           api_base_url="${rob_cos_base_url}-${registration_api_path}"
@@ -45,14 +45,14 @@ jobs:
           echo "Waiting for registration server health endpoint"
           while true; do
             status_code="$(curl -s -o /dev/null -w "%{http_code}" "${api_base_url}/health/" || true)"
-            if [ "$status_code" = "200" ]; then
+            if [ "${status_code}" = "200" ]; then
               echo "Health endpoint is ready."
               break
             fi
 
             now="$(date +%s)"
             elapsed="$((now - start_time))"
-            if [ "$elapsed" -ge "$timeout_seconds" ]; then
+            if [ "${elapsed}" -ge "${timeout_seconds}" ]; then
               echo "Health endpoint did not return 200 within ${timeout_seconds}s (last status: ${status_code})."
               exit 1
             fi
@@ -68,7 +68,7 @@ jobs:
 
           echo "Validating device registration"
           devices_response="$(curl -fsS "${api_base_url}/devices/")"
-          jq -e 'type == "array" and length == 1 and .[0].uid == "robot-001"' <<<"$devices_response" >/dev/null
+          jq -e 'type == "array" and length == 1 and .[0].uid == "robot-001"' <<<"${devices_response}" >/dev/null
 
           echo "Verifying expected snaps are installed"
           expected_snaps=(
@@ -81,19 +81,19 @@ jobs:
           )
 
           for snap_name in "${expected_snaps[@]}"; do
-            snap list "$snap_name" >/dev/null
             echo "Verifying ${snap_name} is installed"
+            snap list "${snap_name}" >/dev/null
           done
 
           echo "Verifying expected snap service states"
           is_service_enabled() {
             unit_name="$1"
             expected_enabled="$2"
-            actual_enabled="$(systemctl is-enabled "$unit_name" || true)"
-            if [ "$expected_enabled" = "enabled" ] && [ "$actual_enabled" = "static" ]; then
+            actual_enabled="$(systemctl is-enabled "${unit_name}" || true)"
+            if [ "${expected_enabled}" = "enabled" ] && [ "${actual_enabled}" = "static" ]; then
               return 0
             fi
-            if [ "$actual_enabled" != "$expected_enabled" ]; then
+            if [ "${actual_enabled}" != "${expected_enabled}" ]; then
               echo "Unexpected enabled state for ${unit_name}: expected ${expected_enabled}, got ${actual_enabled}"
               exit 1
             fi
@@ -102,8 +102,8 @@ jobs:
           is_service_active() {
             unit_name="$1"
             expected_active="$2"
-            actual_active="$(systemctl is-active "$unit_name" || true)"
-            if [ "$actual_active" != "$expected_active" ]; then
+            actual_active="$(systemctl is-active "${unit_name}" || true)"
+            if [ "${actual_active}" != "${expected_active}" ]; then
               echo "Unexpected active state for ${unit_name}: expected ${expected_active}, got ${actual_active}"
               exit 1
             fi
@@ -122,9 +122,9 @@ jobs:
           )
 
           for unit_spec in "${expected_units[@]}"; do
-            IFS='|' read -r unit_name expected_enabled expected_active <<<"$unit_spec"
-            is_service_enabled "$unit_name" "$expected_enabled"
-            is_service_active "$unit_name" "$expected_active"
+            IFS='|' read -r unit_name expected_enabled expected_active <<<"${unit_spec}"
+            is_service_enabled "${unit_name}" "${expected_enabled}"
+            is_service_active "${unit_name}" "${expected_active}"
           done
 
           echo "All checks passed"
