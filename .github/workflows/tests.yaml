@@ -31,7 +31,7 @@ jobs:
               break
             fi
 
-            echo "Relation integration failed; retrying in ${integrate_retry_interval_seconds}s (${elapsed}s/${integrate_timeout_seconds}s)"
+            echo "Relation integration failed; retrying in 60s"
             sleep 60
           done
           cd "$GITHUB_WORKSPACE"
