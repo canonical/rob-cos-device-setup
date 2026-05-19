@@ -88,6 +88,9 @@ jobs:
             snap list "${snap_name}" >/dev/null
           done
 
+          #DEBUG
+          journalctl -xeu snap.ros2-exporter-agent.synchronization.service
+
           echo "Verifying expected snap service states"
           is_service_enabled() {
             unit_name="$1"
