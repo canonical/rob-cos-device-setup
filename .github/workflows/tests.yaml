@@ -80,10 +80,16 @@ jobs:
             rob-cos-grafana-agent
           )
 
+          #DEBUG
+          journalctl -xeu snap.ros2-exporter-agent.recorder.service
+
           for snap_name in "${expected_snaps[@]}"; do
             echo "Verifying ${snap_name} is installed"
             snap list "${snap_name}" >/dev/null
           done
+
+          #DEBUG
+          journalctl -xeu snap.ros2-exporter-agent.synchronization.service
 
           echo "Verifying expected snap service states"
           is_service_enabled() {
