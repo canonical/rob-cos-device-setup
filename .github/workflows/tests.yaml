@@ -89,7 +89,9 @@ jobs:
           done
 
           #DEBUG
+          sleep 30
           journalctl -xeu snap.ros2-exporter-agent.synchronization.service
+          sudo snap logs ros2-exporter-agent.synchronization -n 1000
 
           echo "Verifying expected snap service states"
           is_service_enabled() {
