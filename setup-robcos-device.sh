@@ -20,13 +20,13 @@ echo "Installed rob-cos-data sharing snap"
 snap install cos-registration-agent --channel=latest/beta
 echo "Installed cos-registration agent snap"
 
-snap install ros2-exporter-agent --channel=latest/edge
+snap install ros2-exporter-agent --channel=latest/candidate
 echo "Installed ros2-exporter-agent snap"
 
 snap install foxglove-bridge --channel=cos-jazzy/stable
 echo "Installed foxglove-bridge snap"
 
-snap install rob-cos-grafana-agent --channel=core24/edge
+snap install rob-cos-grafana-agent --channel=core24/candidate
 # Connecting all the interfaces to read logs which are not autoconnect
 snap connect rob-cos-grafana-agent:hardware-observe
 snap connect rob-cos-grafana-agent:log-observe
