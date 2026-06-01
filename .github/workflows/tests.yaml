@@ -80,18 +80,53 @@ jobs:
             rob-cos-grafana-agent
           )
 
-          #DEBUG
-          journalctl -xeu snap.ros2-exporter-agent.recorder.service
+          echo "Capturing ros2-exporter-agent lifecycle after setup"
+          snap list ros2-exporter-agent
+          snap info ros2-exporter-agent
+          snap services ros2-exporter-agent
+
+          for unit_name in \
+            snap.ros2-exporter-agent.recorder.service \
+            snap.ros2-exporter-agent.synchronization.service; do
+            echo "Lifecycle snapshot for ${unit_name} (initial)"
+            systemctl show "${unit_name}" \
+              -p Type \
+              -p RemainAfterExit \
+              -p Restart \
+              -p ActiveState \
+              -p SubState \
+              -p Result \
+              -p ExecMainStatus || true
+            systemctl status "${unit_name}" --no-pager -l || true
+            journalctl -u "${unit_name}" -b --no-pager -n 300 || true
+          done
+          sudo snap logs ros2-exporter-agent.recorder --abs-time -n 300 || true
+          sudo snap logs ros2-exporter-agent.synchronization --abs-time -n 300 || true
 
           for snap_name in "${expected_snaps[@]}"; do
             echo "Verifying ${snap_name} is installed"
             snap list "${snap_name}" >/dev/null
           done
 
-          #DEBUG
           sleep 30
-          journalctl -xeu snap.ros2-exporter-agent.synchronization.service
-          sudo snap logs ros2-exporter-agent.synchronization -n 1000
+          snap services ros2-exporter-agent
+          for unit_name in \
+            snap.ros2-exporter-agent.recorder.service \
+            snap.ros2-exporter-agent.synchronization.service; do
+            echo "Lifecycle snapshot for ${unit_name} (post-wait)"
+            systemctl show "${unit_name}" \
+              -p Type \
+              -p RemainAfterExit \
+              -p Restart \
+              -p ActiveState \
+              -p SubState \
+              -p Result \
+              -p ExecMainStatus || true
+            systemctl status "${unit_name}" --no-pager -l || true
+            journalctl -u "${unit_name}" -b --no-pager -n 300 || true
+          done
+          sudo snap logs ros2-exporter-agent.recorder --abs-time -n 300 || true
+          sudo snap logs ros2-exporter-agent.synchronization --abs-time -n 300 || true
 
           echo "Verifying expected snap service states"
           is_service_enabled() {
