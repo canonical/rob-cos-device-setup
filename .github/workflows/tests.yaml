@@ -121,6 +121,7 @@ jobs:
             "snap.rob-cos-grafana-agent.grafana-agent.service|enabled|active"
           )
 
+          sleep 30 # Give enough tim to everything to settle
           for unit_spec in "${expected_units[@]}"; do
             IFS='|' read -r unit_name expected_enabled expected_active <<<"${unit_spec}"
             is_service_enabled "${unit_name}" "${expected_enabled}"
