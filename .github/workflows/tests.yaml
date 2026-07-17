@@ -39,6 +39,7 @@ jobs:
           default_rob_cos_base_url="http://10.64.140.43/testing"
           per_candidate_timeout_seconds=$((3*60))
           probe_interval_seconds=10
+          port_forward_pid=""
 
           collect_diagnostics() {
             reason="$1"
@@ -52,6 +53,7 @@ jobs:
               sudo microk8s status --wait-ready || true
               sudo microk8s kubectl get nodes -o wide || true
               sudo microk8s kubectl get svc -A -o wide || true
+              sudo microk8s kubectl -n testing get svc traefik traefik-lb -o wide || true
               sudo microk8s kubectl get ingress -A -o wide || true
               sudo microk8s kubectl get pods -A -o wide || true
             fi
@@ -60,8 +62,41 @@ jobs:
             set -e
           }
 
+          stop_traefik_port_forward() {
+            if [ -n "${port_forward_pid}" ] && kill -0 "${port_forward_pid}" 2>/dev/null; then
+              echo "Stopping traefik-lb port-forward (pid=${port_forward_pid})"
+              kill "${port_forward_pid}" 2>/dev/null || true
+              wait "${port_forward_pid}" 2>/dev/null || true
+            fi
+            port_forward_pid=""
+          }
+
+          start_traefik_port_forward() {
+            if [ -n "${port_forward_pid}" ] && kill -0 "${port_forward_pid}" 2>/dev/null; then
+              return 0
+            fi
+            if ! command -v microk8s >/dev/null 2>&1; then
+              return 1
+            fi
+
+            echo "Starting localhost fallback: microk8s port-forward svc/traefik-lb 18080:80"
+            sudo microk8s kubectl -n testing port-forward svc/traefik-lb 18080:80 >/tmp/traefik_port_forward.log 2>&1 &
+            port_forward_pid="$!"
+            sleep 2
+            if kill -0 "${port_forward_pid}" 2>/dev/null; then
+              echo "Port-forward ready with pid=${port_forward_pid}"
+              return 0
+            fi
+
+            echo "Failed to start traefik-lb port-forward"
+            cat /tmp/traefik_port_forward.log || true
+            port_forward_pid=""
+            return 1
+          }
+
           on_exit() {
             exit_code="$?"
+            stop_traefik_port_forward
             if [ "${exit_code}" -ne 0 ]; then
               collect_diagnostics "workflow-exit-${exit_code}"
             fi
@@ -80,6 +115,17 @@ jobs:
             traefik_unit_address="$(jq -r '.applications.traefik.units["traefik/0"].address // empty' <<<"${juju_json}" 2>/dev/null || true)"
             if [ -n "${traefik_unit_address}" ]; then
               urls+=("http://${traefik_unit_address}/testing")
+            fi
+
+            if command -v microk8s >/dev/null 2>&1; then
+              traefik_lb_cluster_ip="$(sudo microk8s kubectl -n testing get svc traefik-lb -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
+              if [ -n "${traefik_lb_cluster_ip}" ] && [ "${traefik_lb_cluster_ip}" != "None" ]; then
+                urls+=("http://${traefik_lb_cluster_ip}/testing")
+              fi
+
+              if start_traefik_port_forward; then
+                urls+=("http://127.0.0.1:18080/testing")
+              fi
             fi
 
             printf '%s\n' "${urls[@]}" | awk '!seen[$0]++'
