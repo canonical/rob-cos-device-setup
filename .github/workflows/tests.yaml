@@ -54,9 +54,17 @@ jobs:
               sudo microk8s status --wait-ready || true
               sudo microk8s kubectl get nodes -o wide || true
               sudo microk8s kubectl get svc -A -o wide || true
-              sudo microk8s kubectl -n testing get svc traefik traefik-lb -o wide || true
+              sudo microk8s kubectl -n testing get svc traefik traefik-lb cos-registration-server -o wide || true
               sudo microk8s kubectl get ingress -A -o wide || true
               sudo microk8s kubectl get pods -A -o wide || true
+            fi
+            if [ -f /tmp/traefik_port_forward.log ]; then
+              echo "--- traefik port-forward log (tail) ---"
+              tail -n 50 /tmp/traefik_port_forward.log || true
+            fi
+            if [ -f /tmp/cos_registration_port_forward.log ]; then
+              echo "--- cos-registration port-forward log (tail) ---"
+              tail -n 50 /tmp/cos_registration_port_forward.log || true
             fi
             ip route || true
             echo "=== end diagnostics (${reason}) ==="
@@ -163,17 +171,20 @@ jobs:
             # Traefik obtaining an external load-balancer address.
             if command -v microk8s >/dev/null 2>&1; then
               if start_cos_registration_port_forward; then
+                append_unique_url "http://localhost:18081"
                 append_unique_url "http://localhost:18081/testing"
               fi
 
               cos_registration_service_ip="$(sudo microk8s kubectl -n testing get svc cos-registration-server -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
               cos_registration_service_port="$(sudo microk8s kubectl -n testing get svc cos-registration-server -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
               if [ -n "${cos_registration_service_ip}" ] && [ -n "${cos_registration_service_port}" ] && [ "${cos_registration_service_ip}" != "None" ]; then
+                append_unique_url "http://${cos_registration_service_ip}:${cos_registration_service_port}"
                 append_unique_url "http://${cos_registration_service_ip}:${cos_registration_service_port}/testing"
               fi
 
               cos_registration_unit_address="$(jq -r '.applications["cos-registration-server"].units["cos-registration-server/0"].address // empty' <<<"${juju_json}" 2>/dev/null || true)"
               if [ -n "${cos_registration_unit_address}" ]; then
+                append_unique_url "http://${cos_registration_unit_address}:8000"
                 append_unique_url "http://${cos_registration_unit_address}:8000/testing"
               fi
             fi
@@ -206,34 +217,70 @@ jobs:
 
           wait_for_health_endpoint() {
             candidate_base_url="$1"
-            candidate_api_base_url="${candidate_base_url}-${registration_api_path}"
+            trimmed_candidate_base_url="${candidate_base_url%/}"
+            candidate_without_testing="${trimmed_candidate_base_url%/testing}"
+            declare -a candidate_api_base_urls=()
             start_time="$(date +%s)"
 
-            echo "Probing health endpoint candidate: ${candidate_api_base_url}/health/"
+            append_unique_api_base_url() {
+              candidate_api_url="$1"
+              [ -n "${candidate_api_url}" ] || return 0
+              for existing_api_url in "${candidate_api_base_urls[@]}"; do
+                if [ "${existing_api_url}" = "${candidate_api_url}" ]; then
+                  return 0
+                fi
+              done
+              candidate_api_base_urls+=("${candidate_api_url}")
+            }
+
+            append_unique_api_base_url "${candidate_base_url}-${registration_api_path}"
+            append_unique_api_base_url "${trimmed_candidate_base_url}/api/v1"
+            if [ "${candidate_without_testing}" != "${trimmed_candidate_base_url}" ]; then
+              append_unique_api_base_url "${candidate_without_testing}/api/v1"
+            fi
+
+            printf 'Probing API base candidate: %s\n' "${candidate_api_base_urls[@]}"
             while true; do
-              status_code="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "${candidate_api_base_url}/health/" || true)"
-              if [ "${status_code}" = "200" ]; then
-                echo "Health endpoint is ready for candidate ${candidate_base_url}."
-                rob_cos_base_url="${candidate_base_url}"
-                api_base_url="${candidate_api_base_url}"
-                return 0
-              fi
+              last_status_code=""
+              for candidate_api_base_url in "${candidate_api_base_urls[@]}"; do
+                if [[ "${candidate_api_base_url}" == http://localhost:18081/* ]]; then
+                  start_cos_registration_port_forward || true
+                fi
+                if [[ "${candidate_api_base_url}" == http://127.0.0.1:18080/* ]]; then
+                  start_traefik_port_forward || true
+                fi
+
+                status_code="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "${candidate_api_base_url}/health/" || true)"
+                last_status_code="${status_code}"
+                if [ "${status_code}" = "200" ]; then
+                  echo "Health endpoint is ready for candidate ${candidate_base_url} via API base ${candidate_api_base_url}."
+                  if [ "${candidate_without_testing}" != "${trimmed_candidate_base_url}" ] && [ "${candidate_api_base_url}" = "${candidate_without_testing}/api/v1" ]; then
+                    rob_cos_base_url="${candidate_without_testing}"
+                  else
+                    rob_cos_base_url="${candidate_base_url}"
+                  fi
+                  api_base_url="${candidate_api_base_url}"
+                  return 0
+                fi
+              done
 
               now="$(date +%s)"
               candidate_elapsed="$((now - start_time))"
               if [ "${candidate_elapsed}" -ge "${per_candidate_timeout_seconds}" ]; then
-                echo "Candidate ${candidate_base_url} did not return 200 within ${per_candidate_timeout_seconds}s (last status: ${status_code})."
-                echo "Verbose curl probe for ${candidate_api_base_url}/health/"
-                curl -sv --connect-timeout 5 --max-time 15 "${candidate_api_base_url}/health/" -o /tmp/health_probe_response_body || true
-                if [ -s /tmp/health_probe_response_body ]; then
-                  echo "Health probe response body:"
-                  cat /tmp/health_probe_response_body
-                fi
+                echo "Candidate ${candidate_base_url} did not return 200 within ${per_candidate_timeout_seconds}s (last status: ${last_status_code:-000})."
+                for candidate_api_base_url in "${candidate_api_base_urls[@]}"; do
+                  echo "Verbose curl probe for ${candidate_api_base_url}/health/"
+                  curl -sv --connect-timeout 5 --max-time 15 "${candidate_api_base_url}/health/" -o /tmp/health_probe_response_body || true
+                  if [ -s /tmp/health_probe_response_body ]; then
+                    echo "Health probe response body:"
+                    cat /tmp/health_probe_response_body
+                  fi
+                done
                 collect_diagnostics "candidate-timeout-${candidate_base_url}"
                 return 1
               fi
 
-              echo "Waiting for health endpoint candidate ${candidate_base_url} (${candidate_elapsed}s/${per_candidate_timeout_seconds}s), got ${status_code}"
+              echo "Waiting for health endpoint candidate ${candidate_base_url} (${candidate_elapsed}s/${per_candidate_timeout_seconds}s), got ${last_status_code:-000}"
               if [ "$((candidate_elapsed % 60))" -eq 0 ]; then
                 collect_diagnostics "candidate-progress-${candidate_elapsed}s"
               fi
