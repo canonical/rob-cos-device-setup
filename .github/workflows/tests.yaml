@@ -68,6 +68,8 @@ jobs:
               echo "--- cos-registration port-forward log (tail) ---"
               tail -n 50 /tmp/cos_registration_port_forward.log || true
             fi
+            snap services || true
+            systemctl --no-pager --type=service --state=failed || true
             ip route || true
             echo "=== end diagnostics (${reason}) ==="
             set -e
@@ -342,8 +344,9 @@ jobs:
             fi
             if [ "${actual_enabled}" != "${expected_enabled}" ]; then
               echo "Unexpected enabled state for ${unit_name}: expected ${expected_enabled}, got ${actual_enabled}"
-              exit 1
+              return 1
             fi
+            return 0
           }
 
           is_service_active() {
@@ -352,8 +355,49 @@ jobs:
             actual_active="$(systemctl is-active "${unit_name}" || true)"
             if [ "${actual_active}" != "${expected_active}" ]; then
               echo "Unexpected active state for ${unit_name}: expected ${expected_active}, got ${actual_active}"
-              exit 1
+              return 1
             fi
+            return 0
+          }
+
+          wait_for_service_state() {
+            unit_name="$1"
+            expected_enabled="$2"
+            expected_active="$3"
+            timeout_seconds="${4:-180}"
+            interval_seconds="${5:-10}"
+            start_seconds="$(date +%s)"
+
+            while true; do
+              enabled_ok=0
+              active_ok=0
+
+              if is_service_enabled "${unit_name}" "${expected_enabled}"; then
+                enabled_ok=1
+              fi
+              if is_service_active "${unit_name}" "${expected_active}"; then
+                active_ok=1
+              fi
+
+              if [ "${enabled_ok}" -eq 1 ] && [ "${active_ok}" -eq 1 ]; then
+                echo "Service state ready for ${unit_name}"
+                return 0
+              fi
+
+              now_seconds="$(date +%s)"
+              elapsed_seconds="$((now_seconds - start_seconds))"
+              if [ "${elapsed_seconds}" -ge "${timeout_seconds}" ]; then
+                actual_enabled="$(systemctl is-enabled "${unit_name}" || true)"
+                actual_active="$(systemctl is-active "${unit_name}" || true)"
+                echo "Service ${unit_name} did not reach expected state after ${timeout_seconds}s (enabled=${actual_enabled}, active=${actual_active})"
+                systemctl --no-pager status "${unit_name}" || true
+                journalctl --no-pager -u "${unit_name}" -n 100 || true
+                return 1
+              fi
+
+              echo "Waiting for ${unit_name} to reach enabled=${expected_enabled}, active=${expected_active} (${elapsed_seconds}s/${timeout_seconds}s)"
+              sleep "${interval_seconds}"
+            done
           }
 
           expected_units=(
@@ -368,11 +412,10 @@ jobs:
             "snap.rob-cos-grafana-agent.grafana-agent.service|enabled|active"
           )
 
-          sleep 30 # Give enough time to everything to settle
+          sleep 30 # Give enough time for services to start
           for unit_spec in "${expected_units[@]}"; do
             IFS='|' read -r unit_name expected_enabled expected_active <<<"${unit_spec}"
-            is_service_enabled "${unit_name}" "${expected_enabled}"
-            is_service_active "${unit_name}" "${expected_active}"
+            wait_for_service_state "${unit_name}" "${expected_enabled}" "${expected_active}" 180 10
           done
 
           echo "All checks passed"
