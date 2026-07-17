@@ -39,7 +39,8 @@ jobs:
           default_rob_cos_base_url="http://10.64.140.43/testing"
           per_candidate_timeout_seconds=$((3*60))
           probe_interval_seconds=10
-          port_forward_pid=""
+          traefik_port_forward_pid=""
+          cos_registration_port_forward_pid=""
 
           collect_diagnostics() {
             reason="$1"
@@ -62,17 +63,24 @@ jobs:
             set -e
           }
 
-          stop_traefik_port_forward() {
-            if [ -n "${port_forward_pid}" ] && kill -0 "${port_forward_pid}" 2>/dev/null; then
-              echo "Stopping traefik-lb port-forward (pid=${port_forward_pid})"
-              kill "${port_forward_pid}" 2>/dev/null || true
-              wait "${port_forward_pid}" 2>/dev/null || true
+          stop_port_forwards() {
+            if [ -n "${traefik_port_forward_pid}" ] && kill -0 "${traefik_port_forward_pid}" 2>/dev/null; then
+              echo "Stopping traefik-lb port-forward (pid=${traefik_port_forward_pid})"
+              kill "${traefik_port_forward_pid}" 2>/dev/null || true
+              wait "${traefik_port_forward_pid}" 2>/dev/null || true
             fi
-            port_forward_pid=""
+            traefik_port_forward_pid=""
+
+            if [ -n "${cos_registration_port_forward_pid}" ] && kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
+              echo "Stopping cos-registration-server port-forward (pid=${cos_registration_port_forward_pid})"
+              kill "${cos_registration_port_forward_pid}" 2>/dev/null || true
+              wait "${cos_registration_port_forward_pid}" 2>/dev/null || true
+            fi
+            cos_registration_port_forward_pid=""
           }
 
           start_traefik_port_forward() {
-            if [ -n "${port_forward_pid}" ] && kill -0 "${port_forward_pid}" 2>/dev/null; then
+            if [ -n "${traefik_port_forward_pid}" ] && kill -0 "${traefik_port_forward_pid}" 2>/dev/null; then
               return 0
             fi
             if ! command -v microk8s >/dev/null 2>&1; then
@@ -81,22 +89,55 @@ jobs:
 
             echo "Starting localhost fallback: microk8s port-forward svc/traefik-lb 18080:80" >&2
             sudo microk8s kubectl -n testing port-forward svc/traefik-lb 18080:80 >/tmp/traefik_port_forward.log 2>&1 &
-            port_forward_pid="$!"
+            traefik_port_forward_pid="$!"
             sleep 2
-            if kill -0 "${port_forward_pid}" 2>/dev/null; then
-              echo "Port-forward ready with pid=${port_forward_pid}" >&2
+            if kill -0 "${traefik_port_forward_pid}" 2>/dev/null; then
+              echo "Port-forward ready with pid=${traefik_port_forward_pid}" >&2
               return 0
             fi
 
             echo "Failed to start traefik-lb port-forward" >&2
             cat /tmp/traefik_port_forward.log >&2 || true
-            port_forward_pid=""
+            traefik_port_forward_pid=""
+            return 1
+          }
+
+          start_cos_registration_port_forward() {
+            if [ -n "${cos_registration_port_forward_pid}" ] && kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
+              return 0
+            fi
+            if ! command -v microk8s >/dev/null 2>&1; then
+              return 1
+            fi
+
+            echo "Starting localhost fallback: microk8s port-forward svc/cos-registration-server 18081:65535" >&2
+            sudo microk8s kubectl -n testing port-forward svc/cos-registration-server 18081:65535 >/tmp/cos_registration_port_forward.log 2>&1 &
+            cos_registration_port_forward_pid="$!"
+            sleep 2
+            if kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
+              echo "cos-registration-server port-forward ready with pid=${cos_registration_port_forward_pid}" >&2
+              return 0
+            fi
+
+            echo "Service port-forward failed; trying pod fallback (cos-registration-server-0:8000)" >&2
+            cat /tmp/cos_registration_port_forward.log >&2 || true
+            sudo microk8s kubectl -n testing port-forward pod/cos-registration-server-0 18081:8000 >/tmp/cos_registration_port_forward.log 2>&1 &
+            cos_registration_port_forward_pid="$!"
+            sleep 2
+            if kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
+              echo "cos-registration-server pod port-forward ready with pid=${cos_registration_port_forward_pid}" >&2
+              return 0
+            fi
+
+            echo "Failed to start cos-registration-server port-forward" >&2
+            cat /tmp/cos_registration_port_forward.log >&2 || true
+            cos_registration_port_forward_pid=""
             return 1
           }
 
           on_exit() {
             exit_code="$?"
-            stop_traefik_port_forward
+            stop_port_forwards
             if [ "${exit_code}" -ne 0 ]; then
               collect_diagnostics "workflow-exit-${exit_code}"
             fi
@@ -121,6 +162,10 @@ jobs:
             # Prefer direct service-level access first so tests do not depend on
             # Traefik obtaining an external load-balancer address.
             if command -v microk8s >/dev/null 2>&1; then
+              if start_cos_registration_port_forward; then
+                append_unique_url "http://localhost:18081/testing"
+              fi
+
               cos_registration_service_ip="$(sudo microk8s kubectl -n testing get svc cos-registration-server -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
               cos_registration_service_port="$(sudo microk8s kubectl -n testing get svc cos-registration-server -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
               if [ -n "${cos_registration_service_ip}" ] && [ -n "${cos_registration_service_port}" ] && [ "${cos_registration_service_ip}" != "None" ]; then
