@@ -79,17 +79,17 @@ jobs:
               return 1
             fi
 
-            echo "Starting localhost fallback: microk8s port-forward svc/traefik-lb 18080:80"
+            echo "Starting localhost fallback: microk8s port-forward svc/traefik-lb 18080:80" >&2
             sudo microk8s kubectl -n testing port-forward svc/traefik-lb 18080:80 >/tmp/traefik_port_forward.log 2>&1 &
             port_forward_pid="$!"
             sleep 2
             if kill -0 "${port_forward_pid}" 2>/dev/null; then
-              echo "Port-forward ready with pid=${port_forward_pid}"
+              echo "Port-forward ready with pid=${port_forward_pid}" >&2
               return 0
             fi
 
-            echo "Failed to start traefik-lb port-forward"
-            cat /tmp/traefik_port_forward.log || true
+            echo "Failed to start traefik-lb port-forward" >&2
+            cat /tmp/traefik_port_forward.log >&2 || true
             port_forward_pid=""
             return 1
           }
@@ -105,30 +105,58 @@ jobs:
 
           discover_base_urls() {
             juju_json="$(juju status --format=json || true)"
-            declare -a urls=("${default_rob_cos_base_url}")
+            declare -a urls=()
+
+            append_unique_url() {
+              candidate_url="$1"
+              [ -n "${candidate_url}" ] || return 0
+              for existing_url in "${urls[@]}"; do
+                if [ "${existing_url}" = "${candidate_url}" ]; then
+                  return 0
+                fi
+              done
+              urls+=("${candidate_url}")
+            }
+
+            # Prefer direct service-level access first so tests do not depend on
+            # Traefik obtaining an external load-balancer address.
+            if command -v microk8s >/dev/null 2>&1; then
+              cos_registration_service_ip="$(sudo microk8s kubectl -n testing get svc cos-registration-server -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
+              cos_registration_service_port="$(sudo microk8s kubectl -n testing get svc cos-registration-server -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || true)"
+              if [ -n "${cos_registration_service_ip}" ] && [ -n "${cos_registration_service_port}" ] && [ "${cos_registration_service_ip}" != "None" ]; then
+                append_unique_url "http://${cos_registration_service_ip}:${cos_registration_service_port}/testing"
+              fi
+
+              cos_registration_unit_address="$(jq -r '.applications["cos-registration-server"].units["cos-registration-server/0"].address // empty' <<<"${juju_json}" 2>/dev/null || true)"
+              if [ -n "${cos_registration_unit_address}" ]; then
+                append_unique_url "http://${cos_registration_unit_address}:8000/testing"
+              fi
+            fi
+
+            append_unique_url "${default_rob_cos_base_url}"
 
             traefik_app_address="$(jq -r '.applications.traefik.address // empty' <<<"${juju_json}" 2>/dev/null || true)"
             if [ -n "${traefik_app_address}" ]; then
-              urls+=("http://${traefik_app_address}/testing")
+              append_unique_url "http://${traefik_app_address}/testing"
             fi
 
             traefik_unit_address="$(jq -r '.applications.traefik.units["traefik/0"].address // empty' <<<"${juju_json}" 2>/dev/null || true)"
             if [ -n "${traefik_unit_address}" ]; then
-              urls+=("http://${traefik_unit_address}/testing")
+              append_unique_url "http://${traefik_unit_address}/testing"
             fi
 
             if command -v microk8s >/dev/null 2>&1; then
               traefik_lb_cluster_ip="$(sudo microk8s kubectl -n testing get svc traefik-lb -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)"
               if [ -n "${traefik_lb_cluster_ip}" ] && [ "${traefik_lb_cluster_ip}" != "None" ]; then
-                urls+=("http://${traefik_lb_cluster_ip}/testing")
+                append_unique_url "http://${traefik_lb_cluster_ip}/testing"
               fi
 
               if start_traefik_port_forward; then
-                urls+=("http://127.0.0.1:18080/testing")
+                append_unique_url "http://127.0.0.1:18080/testing"
               fi
             fi
 
-            printf '%s\n' "${urls[@]}" | awk '!seen[$0]++'
+            printf '%s\n' "${urls[@]}"
           }
 
           wait_for_health_endpoint() {
@@ -174,6 +202,10 @@ jobs:
 
           health_ready=false
           for candidate_base_url in "${base_url_candidates[@]}"; do
+            if [[ ! "${candidate_base_url}" =~ ^https?:// ]]; then
+              echo "Skipping invalid base URL candidate: ${candidate_base_url}"
+              continue
+            fi
             if wait_for_health_endpoint "${candidate_base_url}"; then
               health_ready=true
               break
