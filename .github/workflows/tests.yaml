@@ -342,22 +342,14 @@ jobs:
             if [ "${expected_enabled}" = "enabled" ] && [ "${actual_enabled}" = "static" ]; then
               return 0
             fi
-            if [ "${actual_enabled}" != "${expected_enabled}" ]; then
-              echo "Unexpected enabled state for ${unit_name}: expected ${expected_enabled}, got ${actual_enabled}"
-              return 1
-            fi
-            return 0
+            [ "${actual_enabled}" = "${expected_enabled}" ]
           }
 
           is_service_active() {
             unit_name="$1"
             expected_active="$2"
             actual_active="$(systemctl is-active "${unit_name}" || true)"
-            if [ "${actual_active}" != "${expected_active}" ]; then
-              echo "Unexpected active state for ${unit_name}: expected ${expected_active}, got ${actual_active}"
-              return 1
-            fi
-            return 0
+            [ "${actual_active}" = "${expected_active}" ]
           }
 
           wait_for_service_state() {
@@ -371,6 +363,8 @@ jobs:
             while true; do
               enabled_ok=0
               active_ok=0
+              actual_enabled="$(systemctl is-enabled "${unit_name}" || true)"
+              actual_active="$(systemctl is-active "${unit_name}" || true)"
 
               if is_service_enabled "${unit_name}" "${expected_enabled}"; then
                 enabled_ok=1
@@ -387,15 +381,13 @@ jobs:
               now_seconds="$(date +%s)"
               elapsed_seconds="$((now_seconds - start_seconds))"
               if [ "${elapsed_seconds}" -ge "${timeout_seconds}" ]; then
-                actual_enabled="$(systemctl is-enabled "${unit_name}" || true)"
-                actual_active="$(systemctl is-active "${unit_name}" || true)"
-                echo "Service ${unit_name} did not reach expected state after ${timeout_seconds}s (enabled=${actual_enabled}, active=${actual_active})"
+                echo "Service ${unit_name} did not reach expected state after ${timeout_seconds}s (expected enabled=${expected_enabled}, active=${expected_active}; got enabled=${actual_enabled}, active=${actual_active})"
                 systemctl --no-pager status "${unit_name}" || true
                 journalctl --no-pager -u "${unit_name}" -n 100 || true
                 return 1
               fi
 
-              echo "Waiting for ${unit_name} to reach enabled=${expected_enabled}, active=${expected_active} (${elapsed_seconds}s/${timeout_seconds}s)"
+              echo "Waiting for ${unit_name} (${elapsed_seconds}s/${timeout_seconds}s): expected enabled=${expected_enabled}, active=${expected_active}; got enabled=${actual_enabled}, active=${actual_active}"
               sleep "${interval_seconds}"
             done
           }
