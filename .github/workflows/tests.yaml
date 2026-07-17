@@ -406,7 +406,7 @@ jobs:
             "snap.ros2-exporter-agent.daily-rotation.service|enabled|inactive"
             "snap.ros2-exporter-agent.read-configuration.service|enabled|inactive"
             "snap.ros2-exporter-agent.recorder.service|enabled|active"
-            "snap.ros2-exporter-agent.synchronization.service|enabled|active"
+            "snap.ros2-exporter-agent.synchronization.service|enabled|inactive"
             "snap.foxglove-bridge.config-from-content-snap.service|enabled|inactive"
             "snap.foxglove-bridge.foxglove-bridge.service|enabled|active"
             "snap.rob-cos-grafana-agent.grafana-agent.service|enabled|active"
