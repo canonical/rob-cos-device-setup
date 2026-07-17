@@ -35,32 +35,109 @@ jobs:
             sleep 60
           done
           cd "${GITHUB_WORKSPACE}"
-          rob_cos_base_url="http://10.64.140.43/testing"
           registration_api_path="cos-registration-server/api/v1"
-          api_base_url="${rob_cos_base_url}-${registration_api_path}"
+          default_rob_cos_base_url="http://10.64.140.43/testing"
+          per_candidate_timeout_seconds=$((3*60))
+          probe_interval_seconds=10
 
-          timeout_seconds=$((10*60))
-          start_time="$(date +%s)"
+          collect_diagnostics() {
+            reason="$1"
+            set +e
+            echo "=== diagnostics (${reason}) ==="
+            date -u
+            juju status --relations
+            juju status --format=json | jq '{applications: (.applications | with_entries(.value = {address: .value.address, status: .value.status.current, message: .value.status.message}))}'
+            juju debug-log --replay --lines 200 || juju debug-log --replay --limit 200 || true
+            if command -v microk8s >/dev/null 2>&1; then
+              sudo microk8s status --wait-ready || true
+              sudo microk8s kubectl get nodes -o wide || true
+              sudo microk8s kubectl get svc -A -o wide || true
+              sudo microk8s kubectl get ingress -A -o wide || true
+              sudo microk8s kubectl get pods -A -o wide || true
+            fi
+            ip route || true
+            echo "=== end diagnostics (${reason}) ==="
+            set -e
+          }
 
-          echo "Waiting for registration server health endpoint"
-          while true; do
-            status_code="$(curl -s -o /dev/null -w "%{http_code}" "${api_base_url}/health/" || true)"
-            if [ "${status_code}" = "200" ]; then
-              echo "Health endpoint is ready."
+          on_exit() {
+            exit_code="$?"
+            if [ "${exit_code}" -ne 0 ]; then
+              collect_diagnostics "workflow-exit-${exit_code}"
+            fi
+          }
+          trap on_exit EXIT
+
+          discover_base_urls() {
+            juju_json="$(juju status --format=json || true)"
+            declare -a urls=("${default_rob_cos_base_url}")
+
+            traefik_app_address="$(jq -r '.applications.traefik.address // empty' <<<"${juju_json}" 2>/dev/null || true)"
+            if [ -n "${traefik_app_address}" ]; then
+              urls+=("http://${traefik_app_address}/testing")
+            fi
+
+            traefik_unit_address="$(jq -r '.applications.traefik.units["traefik/0"].address // empty' <<<"${juju_json}" 2>/dev/null || true)"
+            if [ -n "${traefik_unit_address}" ]; then
+              urls+=("http://${traefik_unit_address}/testing")
+            fi
+
+            printf '%s\n' "${urls[@]}" | awk '!seen[$0]++'
+          }
+
+          wait_for_health_endpoint() {
+            candidate_base_url="$1"
+            candidate_api_base_url="${candidate_base_url}-${registration_api_path}"
+            start_time="$(date +%s)"
+
+            echo "Probing health endpoint candidate: ${candidate_api_base_url}/health/"
+            while true; do
+              status_code="$(curl -sS --connect-timeout 5 --max-time 10 -o /dev/null -w "%{http_code}" "${candidate_api_base_url}/health/" || true)"
+              if [ "${status_code}" = "200" ]; then
+                echo "Health endpoint is ready for candidate ${candidate_base_url}."
+                rob_cos_base_url="${candidate_base_url}"
+                api_base_url="${candidate_api_base_url}"
+                return 0
+              fi
+
+              now="$(date +%s)"
+              candidate_elapsed="$((now - start_time))"
+              if [ "${candidate_elapsed}" -ge "${per_candidate_timeout_seconds}" ]; then
+                echo "Candidate ${candidate_base_url} did not return 200 within ${per_candidate_timeout_seconds}s (last status: ${status_code})."
+                echo "Verbose curl probe for ${candidate_api_base_url}/health/"
+                curl -sv --connect-timeout 5 --max-time 15 "${candidate_api_base_url}/health/" -o /tmp/health_probe_response_body || true
+                if [ -s /tmp/health_probe_response_body ]; then
+                  echo "Health probe response body:"
+                  cat /tmp/health_probe_response_body
+                fi
+                collect_diagnostics "candidate-timeout-${candidate_base_url}"
+                return 1
+              fi
+
+              echo "Waiting for health endpoint candidate ${candidate_base_url} (${candidate_elapsed}s/${per_candidate_timeout_seconds}s), got ${status_code}"
+              if [ "$((candidate_elapsed % 60))" -eq 0 ]; then
+                collect_diagnostics "candidate-progress-${candidate_elapsed}s"
+              fi
+              sleep "${probe_interval_seconds}"
+            done
+          }
+
+          echo "Discovering candidate base URLs"
+          mapfile -t base_url_candidates < <(discover_base_urls)
+          printf 'Candidate base URL: %s\n' "${base_url_candidates[@]}"
+
+          health_ready=false
+          for candidate_base_url in "${base_url_candidates[@]}"; do
+            if wait_for_health_endpoint "${candidate_base_url}"; then
+              health_ready=true
               break
             fi
-
-            now="$(date +%s)"
-            elapsed="$((now - start_time))"
-            if [ "${elapsed}" -ge "${timeout_seconds}" ]; then
-              echo "Health endpoint did not return 200 within ${timeout_seconds}s (last status: ${status_code})."
-              exit 1
-            fi
-
-            echo "Waiting for health endpoint (${elapsed}s/${timeout_seconds}s), got ${status_code}"
-            juju status --relations
-            sleep 10
           done
+
+          if [ "${health_ready}" != "true" ]; then
+            echo "No candidate base URL returned a healthy endpoint."
+            exit 1
+          fi
 
           echo "Running device setup script as root"
           device_uid="robot-001"
