@@ -67,25 +67,21 @@ jobs:
             if ! command -v microk8s >/dev/null 2>&1; then
               return 1
             fi
+            if command -v ss >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${traefik_local_port}$"; then
+              echo "Local port ${traefik_local_port} is already in use; cannot start traefik-lb port-forward" >&2
+              return 1
+            fi
 
-            for candidate_port in "${traefik_local_port}" 28080 38080; do
-              if command -v ss >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${candidate_port}$"; then
-                continue
-              fi
+            echo "Starting localhost fallback: microk8s port-forward svc/traefik-lb ${traefik_local_port}:80" >&2
+            sudo microk8s kubectl -n testing port-forward svc/traefik-lb ${traefik_local_port}:80 >/tmp/traefik_port_forward.log 2>&1 &
+            traefik_port_forward_pid="$!"
+            sleep 2
+            if kill -0 "${traefik_port_forward_pid}" 2>/dev/null; then
+              echo "Port-forward ready with pid=${traefik_port_forward_pid} on localhost:${traefik_local_port}" >&2
+              return 0
+            fi
 
-              echo "Starting localhost fallback: microk8s port-forward svc/traefik-lb ${candidate_port}:80" >&2
-              sudo microk8s kubectl -n testing port-forward svc/traefik-lb ${candidate_port}:80 >/tmp/traefik_port_forward.log 2>&1 &
-              traefik_port_forward_pid="$!"
-              sleep 2
-              if kill -0 "${traefik_port_forward_pid}" 2>/dev/null; then
-                traefik_local_port="${candidate_port}"
-                echo "Port-forward ready with pid=${traefik_port_forward_pid} on localhost:${traefik_local_port}" >&2
-                return 0
-              fi
-
-              traefik_port_forward_pid=""
-            done
-
+            traefik_port_forward_pid=""
             echo "Failed to start traefik-lb port-forward" >&2
             return 1
           }
@@ -97,25 +93,21 @@ jobs:
             if ! command -v microk8s >/dev/null 2>&1; then
               return 1
             fi
+            if command -v ss >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${cos_registration_local_port}$"; then
+              echo "Local port ${cos_registration_local_port} is already in use; cannot start cos-registration-server port-forward" >&2
+              return 1
+            fi
 
-            for candidate_port in "${cos_registration_local_port}" 28081 38081; do
-              if command -v ss >/dev/null 2>&1 && ss -ltn | awk '{print $4}' | grep -Eq "(^|:)${candidate_port}$"; then
-                continue
-              fi
+            echo "Starting localhost fallback: microk8s port-forward pod/cos-registration-server-0 ${cos_registration_local_port}:8000" >&2
+            sudo microk8s kubectl -n testing port-forward pod/cos-registration-server-0 ${cos_registration_local_port}:8000 >/tmp/cos_registration_port_forward.log 2>&1 &
+            cos_registration_port_forward_pid="$!"
+            sleep 2
+            if kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
+              echo "cos-registration-server pod port-forward ready with pid=${cos_registration_port_forward_pid} on localhost:${cos_registration_local_port}" >&2
+              return 0
+            fi
 
-              echo "Starting localhost fallback: microk8s port-forward pod/cos-registration-server-0 ${candidate_port}:8000" >&2
-              sudo microk8s kubectl -n testing port-forward pod/cos-registration-server-0 ${candidate_port}:8000 >/tmp/cos_registration_port_forward.log 2>&1 &
-              cos_registration_port_forward_pid="$!"
-              sleep 2
-              if kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
-                cos_registration_local_port="${candidate_port}"
-                echo "cos-registration-server pod port-forward ready with pid=${cos_registration_port_forward_pid} on localhost:${cos_registration_local_port}" >&2
-                return 0
-              fi
-
-              cos_registration_port_forward_pid=""
-            done
-
+            cos_registration_port_forward_pid=""
             echo "Failed to start cos-registration-server pod port-forward" >&2
             return 1
           }
@@ -143,10 +135,8 @@ jobs:
             # Prefer localhost pod port-forward first so tests do not depend on
             # Traefik obtaining an external load-balancer address.
             if command -v microk8s >/dev/null 2>&1; then
-              if start_cos_registration_port_forward; then
-                append_unique_url "http://localhost:${cos_registration_local_port}"
-                append_unique_url "http://localhost:${cos_registration_local_port}/testing"
-              fi
+              append_unique_url "http://localhost:${cos_registration_local_port}"
+              append_unique_url "http://localhost:${cos_registration_local_port}/testing"
             fi
 
             append_unique_url "${default_rob_cos_base_url}"
@@ -167,9 +157,7 @@ jobs:
                 append_unique_url "http://${traefik_lb_cluster_ip}/testing"
               fi
 
-              if start_traefik_port_forward; then
-                append_unique_url "http://localhost:${traefik_local_port}/testing"
-              fi
+              append_unique_url "http://localhost:${traefik_local_port}/testing"
             fi
 
             printf '%s\n' "${urls[@]}"
