@@ -44,37 +44,6 @@ jobs:
           traefik_port_forward_pid=""
           cos_registration_port_forward_pid=""
 
-          collect_diagnostics() {
-            reason="$1"
-            set +e
-            echo "=== diagnostics (${reason}) ==="
-            date -u
-            juju status --relations
-            juju status --format=json | jq '{applications: (.applications | with_entries(.value = {address: .value.address, status: .value.status.current, message: .value.status.message}))}'
-            juju debug-log --replay --lines 200 || juju debug-log --replay --limit 200 || true
-            if command -v microk8s >/dev/null 2>&1; then
-              sudo microk8s status --wait-ready || true
-              sudo microk8s kubectl get nodes -o wide || true
-              sudo microk8s kubectl get svc -A -o wide || true
-              sudo microk8s kubectl -n testing get svc traefik traefik-lb cos-registration-server -o wide || true
-              sudo microk8s kubectl get ingress -A -o wide || true
-              sudo microk8s kubectl get pods -A -o wide || true
-            fi
-            if [ -f /tmp/traefik_port_forward.log ]; then
-              echo "--- traefik port-forward log (tail) ---"
-              tail -n 50 /tmp/traefik_port_forward.log || true
-            fi
-            if [ -f /tmp/cos_registration_port_forward.log ]; then
-              echo "--- cos-registration port-forward log (tail) ---"
-              tail -n 50 /tmp/cos_registration_port_forward.log || true
-            fi
-            snap services || true
-            systemctl --no-pager --type=service --state=failed || true
-            ip route || true
-            echo "=== end diagnostics (${reason}) ==="
-            set -e
-          }
-
           stop_port_forwards() {
             if [ -n "${traefik_port_forward_pid}" ] && kill -0 "${traefik_port_forward_pid}" 2>/dev/null; then
               echo "Stopping traefik-lb port-forward (pid=${traefik_port_forward_pid})"
@@ -114,7 +83,6 @@ jobs:
                 return 0
               fi
 
-              cat /tmp/traefik_port_forward.log >&2 || true
               traefik_port_forward_pid=""
             done
 
@@ -145,7 +113,6 @@ jobs:
                 return 0
               fi
 
-              cat /tmp/cos_registration_port_forward.log >&2 || true
               cos_registration_port_forward_pid=""
             done
 
@@ -154,11 +121,7 @@ jobs:
           }
 
           on_exit() {
-            exit_code="$?"
             stop_port_forwards
-            if [ "${exit_code}" -ne 0 ]; then
-              collect_diagnostics "workflow-exit-${exit_code}"
-            fi
           }
           trap on_exit EXIT
 
@@ -270,22 +233,10 @@ jobs:
               candidate_elapsed="$((now - start_time))"
               if [ "${candidate_elapsed}" -ge "${per_candidate_timeout_seconds}" ]; then
                 echo "Candidate ${candidate_base_url} did not return 200 within ${per_candidate_timeout_seconds}s (last status: ${last_status_code:-000})."
-                for candidate_api_base_url in "${candidate_api_base_urls[@]}"; do
-                  echo "Verbose curl probe for ${candidate_api_base_url}/health/"
-                  curl -sv --connect-timeout 5 --max-time 15 "${candidate_api_base_url}/health/" -o /tmp/health_probe_response_body || true
-                  if [ -s /tmp/health_probe_response_body ]; then
-                    echo "Health probe response body:"
-                    cat /tmp/health_probe_response_body
-                  fi
-                done
-                collect_diagnostics "candidate-timeout-${candidate_base_url}"
                 return 1
               fi
 
               echo "Waiting for health endpoint candidate ${candidate_base_url} (${candidate_elapsed}s/${per_candidate_timeout_seconds}s), got ${last_status_code:-000}"
-              if [ "$((candidate_elapsed % 60))" -eq 0 ]; then
-                collect_diagnostics "candidate-progress-${candidate_elapsed}s"
-              fi
               sleep "${probe_interval_seconds}"
             done
           }
@@ -382,12 +333,9 @@ jobs:
               elapsed_seconds="$((now_seconds - start_seconds))"
               if [ "${elapsed_seconds}" -ge "${timeout_seconds}" ]; then
                 echo "Service ${unit_name} did not reach expected state after ${timeout_seconds}s (expected enabled=${expected_enabled}, active=${expected_active}; got enabled=${actual_enabled}, active=${actual_active})"
-                systemctl --no-pager status "${unit_name}" || true
-                journalctl --no-pager -u "${unit_name}" -n 100 || true
                 return 1
               fi
 
-              echo "Waiting for ${unit_name} (${elapsed_seconds}s/${timeout_seconds}s): expected enabled=${expected_enabled}, active=${expected_active}; got enabled=${actual_enabled}, active=${actual_active}"
               sleep "${interval_seconds}"
             done
           }
