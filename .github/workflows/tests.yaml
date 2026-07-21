@@ -35,7 +35,12 @@ jobs:
             sleep 60
           done
           cd "${GITHUB_WORKSPACE}"
-          rob_cos_base_url="http://10.64.140.43/testing"
+          if [ -z "${METALLB_IPADDR:-}" ]; then
+            echo "METALLB_IPADDR is not set"
+            exit 1
+          fi
+
+          rob_cos_base_url="http://${METALLB_IPADDR}/testing"
           registration_api_path="cos-registration-server/api/v1"
           api_base_url="${rob_cos_base_url}-${registration_api_path}"
 
