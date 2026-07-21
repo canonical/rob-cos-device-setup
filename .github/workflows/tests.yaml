@@ -89,8 +89,8 @@ jobs:
               exit 1
             fi
 
-            rob_cos_base_url="http://localhost:18081"
-            api_base_url="http://localhost:18081/testing-cos-registration-server/api/v1"
+            rob_cos_base_url="http://localhost:18081/testing"
+            api_base_url="${rob_cos_base_url}-${registration_api_path}"
             if ! wait_for_health "${api_base_url}" 300; then
               juju status --relations
               exit 1
