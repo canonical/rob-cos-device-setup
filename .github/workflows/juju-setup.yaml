@@ -22,23 +22,20 @@ jobs:
           sudo snap install concierge --classic
           sudo snap install lxd
           sudo snap install ros2-snapd --channel humble/stable
+          sudo concierge prepare --preset microk8s
 
-          METALLB_IPADDR="10.64.140.43"
+          NODE_INTERNAL_IP="$(sudo microk8s kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')"
+          if [ -z "${NODE_INTERNAL_IP}" ]; then
+            echo "Unable to detect microk8s node InternalIP"
+            exit 1
+          fi
+
+          METALLB_SUBNET="$(echo "${NODE_INTERNAL_IP}" | awk -F. '{printf "%s.%s.%s", $1, $2, $3}')"
+          METALLB_IPADDR="${METALLB_SUBNET}.240"
           echo "METALLB_IPADDR=${METALLB_IPADDR}" >> "$GITHUB_ENV"
 
-          cat > /tmp/concierge.yaml << EOF
-          providers:
-            microk8s:
-              enable: true
-              bootstrap: true
-              addons:
-                - hostpath-storage
-                - dns
-                - rbac
-                - "metallb:${METALLB_IPADDR}-${METALLB_IPADDR}"
-          EOF
-
-          sudo concierge prepare --config /tmp/concierge.yaml
+          sudo microk8s disable metallb || true
+          sudo microk8s enable "metallb:${METALLB_IPADDR}-${METALLB_IPADDR}"
 
       - name: Prepare juju tf provider environment
         run: |
