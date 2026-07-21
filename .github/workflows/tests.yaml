@@ -44,28 +44,58 @@ jobs:
           registration_api_path="cos-registration-server/api/v1"
           api_base_url="${rob_cos_base_url}-${registration_api_path}"
 
-          timeout_seconds=$((10*60))
-          start_time="$(date +%s)"
-
-          echo "Waiting for registration server health endpoint"
-          while true; do
-            status_code="$(curl -s -o /dev/null -w "%{http_code}" "${api_base_url}/health/" || true)"
-            if [ "${status_code}" = "200" ]; then
-              echo "Health endpoint is ready."
-              break
+          cos_registration_port_forward_pid=""
+          cleanup_port_forward() {
+            if [ -n "${cos_registration_port_forward_pid}" ] && kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
+              kill "${cos_registration_port_forward_pid}" || true
+              wait "${cos_registration_port_forward_pid}" 2>/dev/null || true
             fi
+          }
+          trap cleanup_port_forward EXIT
 
-            now="$(date +%s)"
-            elapsed="$((now - start_time))"
-            if [ "${elapsed}" -ge "${timeout_seconds}" ]; then
-              echo "Health endpoint did not return 200 within ${timeout_seconds}s (last status: ${status_code})."
+          wait_for_health() {
+            local target_api_base_url="$1"
+            local timeout_seconds="$2"
+            local start_time now elapsed status_code
+            start_time="$(date +%s)"
+
+            while true; do
+              status_code="$(curl -s -o /dev/null -w "%{http_code}" "${target_api_base_url}/health/" || true)"
+              if [ "${status_code}" = "200" ]; then
+                echo "Health endpoint is ready for ${target_api_base_url}."
+                return 0
+              fi
+
+              now="$(date +%s)"
+              elapsed="$((now - start_time))"
+              if [ "${elapsed}" -ge "${timeout_seconds}" ]; then
+                echo "Health endpoint did not return 200 within ${timeout_seconds}s for ${target_api_base_url} (last status: ${status_code})."
+                return 1
+              fi
+
+              sleep 10
+            done
+          }
+
+          echo "Waiting for registration server health endpoint via MetalLB IP"
+          if ! wait_for_health "${api_base_url}" 300; then
+            echo "MetalLB endpoint unavailable, falling back to localhost port-forward"
+            sudo microk8s kubectl -n testing port-forward pod/cos-registration-server-0 18081:8000 >/tmp/cos_registration_port_forward.log 2>&1 &
+            cos_registration_port_forward_pid="$!"
+            sleep 2
+
+            if ! kill -0 "${cos_registration_port_forward_pid}" 2>/dev/null; then
+              echo "Failed to start cos-registration-server port-forward"
               exit 1
             fi
 
-            echo "Waiting for health endpoint (${elapsed}s/${timeout_seconds}s), got ${status_code}"
-            juju status --relations
-            sleep 10
-          done
+            rob_cos_base_url="http://localhost:18081"
+            api_base_url="http://localhost:18081/testing-cos-registration-server/api/v1"
+            if ! wait_for_health "${api_base_url}" 300; then
+              juju status --relations
+              exit 1
+            fi
+          fi
 
           echo "Running device setup script as root"
           device_uid="robot-001"
