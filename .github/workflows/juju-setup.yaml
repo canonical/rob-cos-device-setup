@@ -18,11 +18,28 @@ jobs:
           sudo apt update
           sudo apt install -y tox
           sudo apt install -y yq
+          sudo apt install -y jq
           sudo snap install terraform --classic
           sudo snap install concierge --classic
           sudo snap install lxd
           sudo snap install ros2-snapd --channel humble/stable
-          sudo concierge prepare --preset microk8s
+
+          IPADDR="$(ip -4 -j route get 2.2.2.2 | jq -r '.[0].prefsrc')"
+          echo "METALLB_IPADDR=${IPADDR}" >> "$GITHUB_ENV"
+
+          cat > /tmp/concierge.yaml << EOF
+          providers:
+            microk8s:
+              enable: true
+              bootstrap: true
+              addons:
+                - hostpath-storage
+                - dns
+                - rbac
+                - "metallb:${IPADDR}-${IPADDR}"
+          EOF
+
+          sudo concierge prepare --config /tmp/concierge.yaml
 
       - name: Prepare juju tf provider environment
         run: |
