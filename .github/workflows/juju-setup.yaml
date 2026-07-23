@@ -6,10 +6,13 @@ on:
       command:
         required: true
         type: string
+      runner:
+        type: string
+        default: ubuntu-latest
 
 jobs:
   setup-and-run:
-    runs-on: self-hosted-linux-amd64-noble-2xlarge
+    runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@v7
 
@@ -23,6 +26,16 @@ jobs:
           sudo snap install lxd
           sudo snap install ros2-snapd --channel humble/stable
           sudo concierge prepare --preset microk8s
+
+          IPADDR="$(ip -4 -j route get 2.2.2.2 | jq -r '.[0].prefsrc')"
+          if [ -z "${IPADDR}" ] || [ "${IPADDR}" = "null" ]; then
+            echo "Unable to determine the runner IP address"
+            exit 1
+          fi
+
+          echo "METALLB_IPADDR=${IPADDR}" >> "$GITHUB_ENV"
+          sudo microk8s disable metallb || true
+          sudo microk8s enable "metallb:${IPADDR}-${IPADDR}"
 
       - name: Prepare juju tf provider environment
         run: |

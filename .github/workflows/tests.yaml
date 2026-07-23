@@ -13,6 +13,7 @@ jobs:
   tests:
     uses: ./.github/workflows/juju-setup.yaml
     with:
+      runner: self-hosted-linux-amd64-noble-xlarge
       command: |
           set -euo pipefail
           echo "Starting COS device setup workflow"
@@ -35,7 +36,42 @@ jobs:
             sleep 60
           done
           cd "${GITHUB_WORKSPACE}"
-          rob_cos_base_url="http://10.64.140.43/testing"
+
+          if [ -z "${METALLB_IPADDR:-}" ]; then
+            echo "METALLB_IPADDR is not set"
+            exit 1
+          fi
+
+          load_balancer_timeout_seconds=$((5*60))
+          load_balancer_start_time="$(date +%s)"
+
+          echo "Waiting for Traefik to obtain a load-balancer IP"
+          while true; do
+            load_balancer_ip="$(sudo microk8s kubectl -n testing get svc traefik-lb -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)"
+            if [ -n "${load_balancer_ip}" ]; then
+              echo "Traefik load-balancer IP is ${load_balancer_ip}"
+              break
+            fi
+
+            now="$(date +%s)"
+            elapsed="$((now - load_balancer_start_time))"
+            if [ "${elapsed}" -ge "${load_balancer_timeout_seconds}" ]; then
+              echo "Traefik did not obtain a load-balancer IP within ${load_balancer_timeout_seconds}s."
+              sudo microk8s kubectl -n testing get svc traefik-lb -o yaml || true
+              juju status --relations
+              exit 1
+            fi
+
+            echo "Waiting for Traefik load-balancer IP (${elapsed}s/${load_balancer_timeout_seconds}s)"
+            sleep 10
+          done
+
+          if [ "${load_balancer_ip}" != "${METALLB_IPADDR}" ]; then
+            echo "Unexpected Traefik load-balancer IP: expected ${METALLB_IPADDR}, got ${load_balancer_ip}"
+            exit 1
+          fi
+
+          rob_cos_base_url="http://${load_balancer_ip}/testing"
           registration_api_path="cos-registration-server/api/v1"
           api_base_url="${rob_cos_base_url}-${registration_api_path}"
 
