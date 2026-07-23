@@ -13,7 +13,6 @@ jobs:
   tests:
     uses: ./.github/workflows/juju-setup.yaml
     with:
-      runner: self-hosted-linux-amd64-noble-xlarge
       command: |
           set -euo pipefail
           echo "Starting COS device setup workflow"
@@ -56,9 +55,11 @@ jobs:
             now="$(date +%s)"
             elapsed="$((now - load_balancer_start_time))"
             if [ "${elapsed}" -ge "${load_balancer_timeout_seconds}" ]; then
-              echo "Traefik did not obtain a load-balancer IP within ${load_balancer_timeout_seconds}s."
+              message="Traefik did not obtain a load-balancer IP within ${load_balancer_timeout_seconds}s; Traefik load balancer is unable to obtain an IP or hostname from the cluster."
+              echo "::error title=Load-balancer readiness failed::${message}"
+              echo "${message}" >> "${GITHUB_STEP_SUMMARY}"
               sudo microk8s kubectl -n testing get svc traefik-lb -o yaml || true
-              juju status --relations
+              juju status --relations || true
               exit 1
             fi
 
