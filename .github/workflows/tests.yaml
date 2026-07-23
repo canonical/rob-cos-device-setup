@@ -42,7 +42,7 @@ jobs:
             exit 1
           fi
 
-          load_balancer_timeout_seconds=$((5*60))
+          load_balancer_timeout_seconds=$((60*60))
           load_balancer_start_time="$(date +%s)"
 
           echo "Waiting for Traefik to obtain a load-balancer IP"
