@@ -113,7 +113,6 @@ jobs:
             "snap.cos-registration-agent.update-device-configuration.service|enabled|inactive"
             "snap.ros2-exporter-agent.auto-clean.service|enabled|inactive"
             "snap.ros2-exporter-agent.daily-rotation.service|enabled|inactive"
-            "snap.ros2-exporter-agent.read-configuration.service|enabled|inactive"
             "snap.ros2-exporter-agent.recorder.service|enabled|active"
             "snap.ros2-exporter-agent.synchronization.service|enabled|active"
             "snap.foxglove-bridge.config-from-content-snap.service|enabled|inactive"
